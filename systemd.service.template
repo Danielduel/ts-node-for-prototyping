@@ -1,0 +1,14 @@
+[Unit]
+Description=${app-name} service
+
+[Service]
+ExecStart=/usr/bin/npm start
+WorkingDirectory=/home/ec2-user/${app-name}
+Restart=always
+RestartSec=10
+
+# Output to syslog
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=${app-name}
+
