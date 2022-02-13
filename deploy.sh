@@ -1,4 +1,5 @@
 source secret.env
+source ./deploy_utils/transformSystemdService.sh
 
 # TODO: exclude repeating parts to separate file, make this
 # file easier to edit
@@ -29,24 +30,6 @@ read -r -d '' DEPLOYMENT_DEPENDENCIES << EOM
   fi
 EOM
 
-# Helpers to make debug output cleaner
-NO_FORMAT="\033[0m"
-F_BOLD="\033[1m"
-C_AQUA="\033[48;5;14m"
-C_GREY0="\033[38;5;16m"
-C_WHEAT1="\033[48;5;229m"
-
-# Load systemd template into variable
-# Then use sed to replace template content in memory
-# Then output debug
-systemdService=$(cat ./systemd.service.template)
-systemdService=$(sed "s~\${app-name}~$APP_NAME~g" <<< $systemdService)
-systemdService=$(sed "s~\${node-version}~$NODE_VERSION~g" <<< $systemdService)
-systemdService=$(sed "s~\${exec-start}~$EXEC_START~g" <<< $systemdService)
-echo -e "${F_BOLD}${C_GREY0}${C_AQUA}Rendered systemd service file:\n ${NO_FORMAT}"
-echo -e "$systemdService" | while read line; do echo -e "${F_BOLD}${C_GREY0}${C_AQUA} ${NO_FORMAT} $line"; done
-echo -e "${F_BOLD}${C_GREY0}${C_AQUA}.${NO_FORMAT}"
-echo -e "${NO_FORMAT}"
 
 # Check if dependencies are installed
 ZIP_COMPAT="Zip 3.0 (July 5th 2008), by Info-ZIP"
@@ -60,6 +43,10 @@ then
   echo "zip could not be found, please install zip command compatible with ${ZIP_COMPAT}"
   exit
 fi
+
+systemdService=$(transformSystemdService) 
+echo -e "..."
+debugSystemdService "$systemdService"
 
 # Creating a zip package with files needed for deployment
 DEPLOYMENT_ZIP_LOCAL="./.deployment/.deploy.zip"
