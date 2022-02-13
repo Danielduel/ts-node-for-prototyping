@@ -1,5 +1,8 @@
 source secret.env
 
+# TODO: exclude repeating parts to separate file, make this
+# file easier to edit
+
 # List of files that have to be deployed
 read -r -d '' DEPLOYMENT_CONTENT << EOM
   package.json
@@ -15,6 +18,8 @@ read -r -d '' DEPLOYMENT_CMD << EOM
   npm i --frozen-lockfile
 EOM
 
+# Install dependencies
+# TODO: Cut that out and make template for template
 read -r -d '' DEPLOYMENT_DEPENDENCIES << EOM
   if ! command -v npm &> /dev/null
   then
@@ -34,9 +39,6 @@ C_WHEAT1="\033[48;5;229m"
 # Load systemd template into variable
 # Then use sed to replace template content in memory
 # Then output debug
-
-echo -e $EXEC_START
-
 systemdService=$(cat ./systemd.service.template)
 systemdService=$(sed "s~\${app-name}~$APP_NAME~g" <<< $systemdService)
 systemdService=$(sed "s~\${node-version}~$NODE_VERSION~g" <<< $systemdService)
@@ -75,7 +77,7 @@ echo -e "${NO_FORMAT}"
 # UID to not run into an issue with multiple deploys
 UNIQUE_ID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
 
-# This is a security risk to ignore fingerprints, but I don't care here
+# Ignoring fingerprints is generally a security risk, but I don't care here
 # If you care - please do a PR to the repository
 read -r -d '' SCP_ARGS << EOM
   -o UserKnownHostsFile=/dev/null
@@ -97,6 +99,8 @@ EOM
 ssh ${SSH_ARGS} "${PREPARE_DEPLOYMENT}"
 scp ${SCP_ARGS} ${DEPLOYMENT_ZIP_LOCAL} ${DEPLOYMENT_USER}@${DEPLOYMENT_HOST}:/tmp/${APP_NAME}/${UNIQUE_ID}/deployment.zip
 
+# TODO: Redirect "verbose" output to some log file and display
+# user-friendly messages as the output while running this script
 read -r -d '' EXTRACT_CMD << EOM
   cd /tmp/${APP_NAME}/${UNIQUE_ID}
   
@@ -140,6 +144,7 @@ read -r -d '' EXTRACT_CMD << EOM
   sudo rm -rf /tmp/${APP_NAME}/${UNIQUE_ID}
 EOM
 ssh ${SSH_ARGS} "echo -e \"${EXTRACT_CMD}\" | sh"
-# ssh ${SSH_ARGS}
 
+# TODO: Listen for journalctl entries and try to curl/wget ${DEPLOYMENT_HOST}
+# and notify user that app is ready under protocol://${DEPLOYMENT_HOST}/
 
