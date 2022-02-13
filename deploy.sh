@@ -1,7 +1,4 @@
-# Edit template variables here or
-# load them from envs
-APP_NAME="test"
-APP_NAME_CAPITALIZED=${APP_NAME^}
+source secret.env
 
 # List of files that have to be deployed
 read -r -d '' DEPLOYMENT_CONTENT << EOM
@@ -18,6 +15,15 @@ read -r -d '' DEPLOYMENT_CMD << EOM
   npm i --frozen-lockfile
 EOM
 
+read -r -d '' DEPLOYMENT_DEPENDENCIES << EOM
+  if ! command -v npm &> /dev/null
+  then
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+    . ~/.nvm/nvm.sh
+    nvm install 16
+  fi
+EOM
+
 # Helpers to make debug output cleaner
 NO_FORMAT="\033[0m"
 F_BOLD="\033[1m"
@@ -28,8 +34,13 @@ C_WHEAT1="\033[48;5;229m"
 # Load systemd template into variable
 # Then use sed to replace template content in memory
 # Then output debug
+
+echo -e $EXEC_START
+
 systemdService=$(cat ./systemd.service.template)
-systemdService=$(sed "s/\${app-name}/$APP_NAME/g" <<< $systemdService)
+systemdService=$(sed "s~\${app-name}~$APP_NAME~g" <<< $systemdService)
+systemdService=$(sed "s~\${node-version}~$NODE_VERSION~g" <<< $systemdService)
+systemdService=$(sed "s~\${exec-start}~$EXEC_START~g" <<< $systemdService)
 echo -e "${F_BOLD}${C_GREY0}${C_AQUA}Rendered systemd service file:\n ${NO_FORMAT}"
 echo -e "$systemdService" | while read line; do echo -e "${F_BOLD}${C_GREY0}${C_AQUA} ${NO_FORMAT} $line"; done
 echo -e "${F_BOLD}${C_GREY0}${C_AQUA}.${NO_FORMAT}"
@@ -49,20 +60,86 @@ then
 fi
 
 # Creating a zip package with files needed for deployment
+DEPLOYMENT_ZIP_LOCAL="./.deployment/.deploy.zip"
 rm -rf ./.deployment
 mkdir -p ./.deployment
 echo "$systemdService" >> ./.deployment/${APP_NAME}.service
-zip -rq ./.deployment/.deploy.zip ${DEPLOYMENT_CONTENT} ./.deployment/${APP_NAME}.service
+zip -rq ${DEPLOYMENT_ZIP_LOCAL} ${DEPLOYMENT_CONTENT} ./.deployment/${APP_NAME}.service
 
 # Displaying data about deployment zip
 echo -e "${F_BOLD}${C_GREY0}${C_WHEAT1}Deployment archive listing:\n ${NO_FORMAT}"
-zip -sf ./.deployment/.deploy.zip | while read line; do echo -e "${F_BOLD}${C_GREY0}${C_WHEAT1} ${NO_FORMAT} $line"; done
+zip -sf ${DEPLOYMENT_ZIP_LOCAL} | while read line; do echo -e "${F_BOLD}${C_GREY0}${C_WHEAT1} ${NO_FORMAT} $line"; done
 echo -e "${F_BOLD}${C_GREY0}${C_WHEAT1}.${NO_FORMAT}"
 echo -e "${NO_FORMAT}"
 
-# TODO: provision small ec2 instance and:
-# 1. scp deployment zip
-# 2. shut down service
-# 3. ssh commands to resetup app
-# 4. put service back online
+# UID to not run into an issue with multiple deploys
+UNIQUE_ID=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1)
+
+# This is a security risk to ignore fingerprints, but I don't care here
+# If you care - please do a PR to the repository
+read -r -d '' SCP_ARGS << EOM
+  -o UserKnownHostsFile=/dev/null
+  -o StrictHostKeyChecking=no
+  -i ${DEPLOYMENT_KEY_PATH}
+EOM
+
+read -r -d '' SSH_ARGS << EOM
+  ${SCP_ARGS}
+  ${DEPLOYMENT_USER}@${DEPLOYMENT_HOST} 
+EOM
+
+read -r -d '' PREPARE_DEPLOYMENT << EOM
+  sudo mkdir -p /tmp/${APP_NAME}/${UNIQUE_ID}
+  sudo mkdir -p /opt/deployedapps/${APP_NAME}
+  sudo chown -R ${DEPLOYMENT_USER} /tmp/${APP_NAME}/${UNIQUE_ID}
+  sudo chown -R ${DEPLOYMENT_USER} /opt/deployedapps/${APP_NAME}
+EOM
+ssh ${SSH_ARGS} "${PREPARE_DEPLOYMENT}"
+scp ${SCP_ARGS} ${DEPLOYMENT_ZIP_LOCAL} ${DEPLOYMENT_USER}@${DEPLOYMENT_HOST}:/tmp/${APP_NAME}/${UNIQUE_ID}/deployment.zip
+
+read -r -d '' EXTRACT_CMD << EOM
+  cd /tmp/${APP_NAME}/${UNIQUE_ID}
+  
+  # Install unzip (assuming ec2)
+  if ! command -v unzip &> /dev/null
+  then
+    sudo apt-get install unzip
+  fi
+  
+  # Unzip deployment
+  # mkdir unzip_dir - not needed
+  sudo unzip deployment.zip -d unzip_dir
+
+  # Stop service if running and replace new service file
+  sudo systemctl stop ${APP_NAME}
+  sudo systemctl disable ${APP_NAME}
+  sudo rm /etc/systemd/system/${APP_NAME}.service
+  sudo mv ./unzip_dir/.deployment/${APP_NAME}.service /etc/systemd/system/${APP_NAME}.service
+  
+  # Replace deployment
+  sudo rm -rf /opt/deployedapps/${APP_NAME}
+  sudo mv unzip_dir /opt/deployedapps/${APP_NAME}
+  sudo chown -R ${DEPLOYMENT_USER} /opt/deployedapps/${APP_NAME}
+
+  # Go into directory and execute install script
+  cd /opt/deployedapps/${APP_NAME}
+  ${DEPLOYMENT_DEPENDENCIES}
+  ${DEPLOYMENT_CMD}
+
+  # Enable new service
+  sudo systemctl enable ${APP_NAME}.service
+  sudo systemctl start ${APP_NAME}.service
+
+  # Reroute ports
+  sudo iptables -t nat -F
+  sudo iptables -t nat -X
+  sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-port 3000
+  sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3001
+
+  # Clean the tmp folder
+  sudo rm -rf /tmp/${APP_NAME}/${UNIQUE_ID}
+EOM
+ssh ${SSH_ARGS} "echo -e \"${EXTRACT_CMD}\" | sh"
+# ssh ${SSH_ARGS}
+
 

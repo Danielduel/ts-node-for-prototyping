@@ -2,8 +2,9 @@
 Description=${app-name} service
 
 [Service]
-ExecStart=/usr/bin/npm start
-WorkingDirectory=/home/ec2-user/${app-name}
+Environment=NODE_VERSION=${node-version}
+ExecStart=${exec-start}
+WorkingDirectory=/opt/deployedapps/${app-name}
 Restart=always
 RestartSec=10
 
