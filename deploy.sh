@@ -33,11 +33,6 @@ EOM
 
 # Check if dependencies are installed
 ZIP_COMPAT="Zip 3.0 (July 5th 2008), by Info-ZIP"
-if ! command -v zcat &> /dev/null
-then
-  echo "zcat could not be found, please install zcat command compatible with ${ZIP_COMPAT}"
-  exit
-fi
 if ! command -v zip &> /dev/null
 then
   echo "zip could not be found, please install zip command compatible with ${ZIP_COMPAT}"
