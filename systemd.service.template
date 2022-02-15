@@ -2,7 +2,7 @@
 Description=${app-name} service
 
 [Service]
-Environment=NODE_VERSION=${node-version}
+EnvironmentFile=/home/${deployment-user}/envs/${app-name}.env
 ExecStart=${exec-start}
 WorkingDirectory=/opt/deployedapps/${app-name}
 Restart=always

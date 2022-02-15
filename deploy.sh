@@ -48,7 +48,9 @@ DEPLOYMENT_ZIP_LOCAL="./.deployment/.deploy.zip"
 rm -rf ./.deployment
 mkdir -p ./.deployment
 echo "$systemdService" >> ./.deployment/${APP_NAME}.service
-zip -rq ${DEPLOYMENT_ZIP_LOCAL} ${DEPLOYMENT_CONTENT} ./.deployment/${APP_NAME}.service
+cp ./secret.env ./.deployment/secret.env
+zip -rq ${DEPLOYMENT_ZIP_LOCAL} ${DEPLOYMENT_CONTENT} ./.deployment/${APP_NAME}.service ./.deployment/secret.env
+rm ./.deployment/secret.env
 
 # Displaying data about deployment zip
 echo -e "${F_BOLD}${C_GREY0}${C_WHEAT1}Deployment archive listing:\n ${NO_FORMAT}"
@@ -95,6 +97,11 @@ read -r -d '' EXTRACT_CMD << EOM
   # Unzip deployment
   # mkdir unzip_dir - not needed
   sudo unzip deployment.zip -d unzip_dir
+
+  # move secret.env to correct place
+  mkdir -p /home/${DEPLOYMENT_USER}/envs
+  sudo mv ./unzip_dir/.deployment/secret.env /home/${DEPLOYMENT_USER}/envs/${APP_NAME}.env
+  sudo chown -R ${DEPLOYMENT_USER} /home/${DEPLOYMENT_USER}/envs/${APP_NAME}.env
 
   # Stop service if running and replace new service file
   sudo systemctl stop ${APP_NAME}

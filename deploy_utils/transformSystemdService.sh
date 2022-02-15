@@ -8,6 +8,7 @@ function transformSystemdService {
   systemdService=$(sed "s~\${app-name}~$APP_NAME~g" <<< $systemdService)
   systemdService=$(sed "s~\${node-version}~$NODE_VERSION~g" <<< $systemdService)
   systemdService=$(sed "s~\${exec-start}~$EXEC_START~g" <<< $systemdService)
+  systemdService=$(sed "s~\${deployment-user}~$DEPLOYMENT_USER~g" <<< $systemdService)
 
   echo -e "$systemdService"
 }
